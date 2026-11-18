@@ -7,8 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 concurrency:
   group: coze-checkin
@@ -46,6 +45,26 @@ jobs:
           POST_LOAD_WAIT_MS: "5000"
         run: npm start
 
+      - name: Write run summary
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          if (!summaryPath || !fs.existsSync("artifacts/result.json")) process.exit(0);
+          const result = JSON.parse(fs.readFileSync("artifacts/result.json", "utf8"));
+          const lines = [`## Coze 签到结果 ${result.date || ""}`, ""];
+          if (Array.isArray(result.accounts) && result.accounts.length) {
+            lines.push("| 账号 | 结果 | 说明 |", "| --- | --- | --- |");
+            for (const account of result.accounts) {
+              const message = String(account.message || "").replace(/\|/g, "\\|");
+              lines.push(`| ${account.name} | ${account.success ? "成功" : "失败"} | ${message} |`);
+            }
+          }
+          if (result.error) lines.push("", `错误：${result.error}`);
+          fs.appendFileSync(summaryPath, lines.join("\n") + "\n");
+          NODE
+
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v6
@@ -53,25 +72,6 @@ jobs:
           name: coze-failure
           path: artifacts/
           if-no-files-found: ignore
-
-      - name: Publish check-in status
-        if: always()
-        run: |
-          set -e
-          if [ ! -f artifacts/result.json ]; then
-            echo "No result file found; skip publishing status."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan coze-status-tmp
-          git rm -rf . >/dev/null 2>&1 || true
-          mkdir -p status
-          cp artifacts/result.json status/latest.json
-          git add -f status/latest.json
-          git commit -m "chore: coze status $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push --force origin HEAD:coze-status
 
       - name: Update Coze cookie secrets
         if: success()

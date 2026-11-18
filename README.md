@@ -1,8 +1,8 @@
 # Coze 每日积分自动领取
 
-这是一个完全跑在 GitHub Actions（GitHub 自动化）里的 Coze 每日积分脚本。Fork（复刻）仓库后，只需要在 GitHub 网页里填好两个账号的登录 Cookie 和飞书机器人地址，就可以每天自动运行；不需要把项目下载到自己的电脑。
+这是一个完全跑在 GitHub Actions（GitHub 自动化）里的 Coze 每日积分脚本。Fork（复刻）仓库后，只需要在 GitHub 网页里填好两个账号的登录 Cookie，就可以每天自动运行；不需要把项目下载到自己的电脑。
 
-脚本每天北京时间 00:05 打开 `https://www.coze.cn/home`，依次使用两个账号的 Cookie 保持登录，并尝试点击页面上可能出现的“领取 / 签到 / 免费积分”等按钮；09:00 把两个账号的签到结果汇总发送到飞书。运行失败时会保存截图，并可通过 pushplus（推送加）或 Bark（iOS 推送工具）即时通知你。
+脚本每天北京时间 00:05 打开 `https://www.coze.cn/home`，依次使用两个账号的 Cookie 保持登录，并尝试点击页面上可能出现的“领取 / 签到 / 免费积分”等按钮。运行结束后，签到结果会直接显示在 Actions 本次运行的 Summary（摘要）里；失败时会保存截图，并可通过 pushplus（推送加）或 Bark（iOS 推送工具）即时通知你。
 
 ## 快速上手
 
@@ -27,18 +27,9 @@
 
 也可以用 GitHub Variables（普通变量）`COZE_ACCOUNT_NAMES` 自定义账号显示名，逗号分隔，例如 `主号,小号`；不填时依次显示为「账号1」「账号2」。
 
-### 第 3 步：添加飞书通知 Secret（加密变量）
+### 第 3 步：按需添加失败通知 Secret（加密变量）
 
-每天 09:00 的签到汇总通过飞书群自定义机器人发送，必须配置：
-
-| 名称 | 必填 | 填什么 |
-| --- | --- | --- |
-| `FEISHU_WEBHOOK_URL` | 是 | 飞书群「设置」->「群机器人」->「添加机器人」->「自定义机器人」生成的 Webhook 地址 |
-| `FEISHU_WEBHOOK_SECRET` | 否 | 自定义机器人开启「签名校验」时填写的密钥；未开启签名校验则不填 |
-
-### 第 3.1 步：按需添加失败通知 Secret（加密变量）
-
-这一步可选。签到脚本运行失败时会即时推送（不依赖 09:00 汇总）；想推送到微信，推荐只填 `PUSHPLUS_TOKEN`。
+这一步可选，不配置也能正常签到，结果直接在 Actions 里查看。签到脚本运行失败时会即时推送，想推送到微信，推荐只填 `PUSHPLUS_TOKEN`。
 
 | 名称 | 用途 | 填什么 | 获取方式 |
 | --- | --- | --- | --- |
@@ -62,32 +53,32 @@
 2. 选择 `Coze daily check-in`。
 3. 点击 `Run workflow`（手动运行）。
 4. 等待运行结束，绿色对勾表示成功。
+5. 点开这次运行，在 **Summary**（摘要）标签页可以看到两个账号的签到结果。
 
 如果失败，打开本次运行记录，查看日志和 `coze-failure` artifact（失败产物）。里面通常会有失败截图和页面 HTML，方便判断是不是 Cookie 过期或页面变化。
 
-签到脚本能运行起来但某个账号失败时，会立即通过 pushplus / Bark 发送带具体失败原因的通知（需配置对应 Secret）；没有配置时，结果仍会在 09:00 的飞书汇总里体现。
+签到脚本能运行起来但某个账号失败时，会立即通过 pushplus / Bark 发送带具体失败原因的通知（需配置对应 Secret）；没有配置时，直接看 Summary 或失败日志即可。
 
 ### 第 6 步：等待每天自动运行
 
-测试成功后不用再操作。每天北京时间 00:05 自动签到两个账号，09:00 通过飞书发送签到结果汇总。
+测试成功后不用再操作。每天北京时间 00:05 自动签到两个账号，结果记录在当次运行的 Summary 里。
 
 ## 定时运行
 
-默认配置：
+默认配置在 `.github/workflows/coze-checkin.yml`：
 
-- `.github/workflows/coze-checkin.yml`：每天 00:05 签到，`cron: "5 16 * * *"`
-- `.github/workflows/coze-summary.yml`：每天 09:00 发送飞书汇总，`cron: "0 1 * * *"`
+```yaml
+schedule:
+  - cron: "5 16 * * *"
+```
 
-GitHub Actions（GitHub 自动化）的 cron（定时表达式）使用 UTC（协调世界时）。`5 16 * * *` 对应北京时间次日 00:05，`0 1 * * *` 对应北京时间 09:00。GitHub 可能会有几分钟延迟，这是正常现象。
+GitHub Actions（GitHub 自动化）的 cron（定时表达式）使用 UTC（协调世界时）。`5 16 * * *` 对应北京时间次日 00:05。GitHub 可能会有几分钟延迟，这是正常现象。
 
-签到结果会写入仓库的 `coze-status` 分支（`status/latest.json`），09:00 的汇总任务从这里读取。不要删除该分支。
-
-如果要改时间，直接改对应工作流里的 cron（定时表达式）：
+如果要改时间，直接改这行 cron（定时表达式）：
 
 | 北京时间 | cron（定时表达式） |
 | --- | --- |
 | 每天 00:05 | `5 16 * * *` |
-| 每天 09:00 | `0 1 * * *` |
 | 每天 08:00 | `0 0 * * *` |
 | 每天 12:00 | `0 4 * * *` |
 | 每天 23:00 | `0 15 * * *` |
@@ -112,7 +103,7 @@ npm start
 ## 安全提醒
 
 - 不要把 Cookie、token（令牌）、Bark 地址写进代码或提交到仓库。
-- `COZE_COOKIES_JSON_1`、`COZE_COOKIES_JSON_2`、`FEISHU_WEBHOOK_URL`、`PUSHPLUS_TOKEN`、`BARK_PUSH_URL`、`GH_PAT` 都应该放在 GitHub Secrets（GitHub 加密变量）里。
+- `COZE_COOKIES_JSON_1`、`COZE_COOKIES_JSON_2`、`PUSHPLUS_TOKEN`、`BARK_PUSH_URL`、`GH_PAT` 都应该放在 GitHub Secrets（GitHub 加密变量）里。
 - 如果怀疑 Cookie 泄露，退出 Coze 登录并重新登录，再更新对应的 `COZE_COOKIES_JSON_1` / `COZE_COOKIES_JSON_2`。
 
 ---
