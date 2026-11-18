@@ -1,8 +1,6 @@
 import fs from "node:fs/promises";
 import { spawn } from "node:child_process";
 
-const secretName = process.env.COZE_SECRET_NAME || "COZE_COOKIES_JSON";
-const statePath = process.env.UPDATED_STORAGE_STATE_PATH || "artifacts/storage_state.updated.json";
 const token = process.env.GH_PAT || "";
 const repository = process.env.GITHUB_REPOSITORY || "";
 
@@ -15,15 +13,46 @@ async function main() {
     throw new Error("GITHUB_REPOSITORY is missing.");
   }
 
-  const value = await fs.readFile(statePath, "utf8");
-  const storageState = JSON.parse(value);
-  const cookies = filterCookies(Array.isArray(storageState.cookies) ? storageState.cookies : []);
-  if (cookies.length === 0) {
-    throw new Error("No usable cookies were found in the updated storage state.");
+  const targets = parseTargets();
+  if (targets.length === 0) {
+    console.log("No refresh targets configured; skipping GitHub secret update.");
+    return;
   }
 
-  await setSecretWithGh(secretName, JSON.stringify(cookies), repository, token);
-  console.log(`Updated repository secret ${secretName}.`);
+  for (const target of targets) {
+    const exists = await fs.access(target.path).then(() => true).catch(() => false);
+    if (!exists) {
+      console.log(`${target.path} does not exist; skipping ${target.secret}.`);
+      continue;
+    }
+
+    const storageState = JSON.parse(await fs.readFile(target.path, "utf8"));
+    const cookies = filterCookies(Array.isArray(storageState.cookies) ? storageState.cookies : []);
+    if (cookies.length === 0) {
+      console.log(`No usable cookies in ${target.path}; skipping ${target.secret}.`);
+      continue;
+    }
+
+    await setSecretWithGh(target.secret, JSON.stringify(cookies), repository, token);
+    console.log(`Updated repository secret ${target.secret}.`);
+  }
+}
+
+function parseTargets() {
+  const raw = (process.env.COZE_REFRESH_TARGETS || "").trim();
+  if (!raw) return [];
+
+  const targets = JSON.parse(raw);
+  if (!Array.isArray(targets)) {
+    throw new Error("COZE_REFRESH_TARGETS must be a JSON array.");
+  }
+
+  return targets
+    .map((target) => ({
+      secret: String(target.secret || "").trim(),
+      path: String(target.path || "").trim()
+    }))
+    .filter((target) => target.secret && target.path);
 }
 
 function filterCookies(cookies) {
@@ -42,12 +71,12 @@ function filterCookies(cookies) {
   }));
 }
 
-async function setSecretWithGh(name, value, repository, token) {
+async function setSecretWithGh(name, value, repo, ghToken) {
   const ghPath = process.env.GH_CLI_PATH || "gh";
-  const child = spawn(ghPath, ["secret", "set", name, "--repo", repository], {
+  const child = spawn(ghPath, ["secret", "set", name, "--repo", repo], {
     env: {
       ...process.env,
-      GH_TOKEN: token
+      GH_TOKEN: ghToken
     },
     stdio: ["pipe", "pipe", "pipe"]
   });

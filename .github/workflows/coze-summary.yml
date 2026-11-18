@@ -1,0 +1,39 @@
+name: Coze daily summary
+
+on:
+  schedule:
+    # 09:00 Asia/Shanghai (UTC+8)
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Fetch latest check-in status
+        run: |
+          curl -fsSL \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/status/latest.json?ref=coze-status" \
+            -o status.json \
+            || echo "Status file not found; the summary will report missing data."
+
+      - name: Send Feishu summary
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          STATUS_FILE: status.json
+        run: node scripts/send-summary.mjs

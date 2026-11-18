@@ -1,8 +1,8 @@
 # Coze 每日积分自动领取
 
-这是一个完全跑在 GitHub Actions（GitHub 自动化）里的 Coze 每日积分脚本。Fork（复刻）仓库后，只需要在 GitHub 网页里填好登录 Cookie，就可以每天自动运行；不需要把项目下载到自己的电脑。
+这是一个完全跑在 GitHub Actions（GitHub 自动化）里的 Coze 每日积分脚本。Fork（复刻）仓库后，只需要在 GitHub 网页里填好两个账号的登录 Cookie 和飞书机器人地址，就可以每天自动运行；不需要把项目下载到自己的电脑。
 
-脚本会每天打开 `https://www.coze.cn/home`，使用 Cookie 保持登录，并尝试点击页面上可能出现的“领取 / 签到 / 免费积分”等按钮。运行成功只写日志；运行失败时会保存截图，并可通过 pushplus（推送加）或 Bark（iOS 推送工具）通知你。
+脚本每天北京时间 00:05 打开 `https://www.coze.cn/home`，依次使用两个账号的 Cookie 保持登录，并尝试点击页面上可能出现的“领取 / 签到 / 免费积分”等按钮；09:00 把两个账号的签到结果汇总发送到飞书。运行失败时会保存截图，并可通过 pushplus（推送加）或 Bark（iOS 推送工具）即时通知你。
 
 ## 快速上手
 
@@ -16,7 +16,8 @@
 
 | 名称 | 必填 | 填什么 | 怎么获取 |
 | --- | --- | --- | --- |
-| `COZE_COOKIES_JSON` | 是 | Coze 登录 Cookie 的 JSON 数组 | 用浏览器登录 `https://www.coze.cn`，再用 Cookie 导出插件导出 `coze.cn`、`volcengine.com`、`volccloudidentity.com` 相关 Cookie。把导出的 JSON 数组完整粘贴进去。 |
+| `COZE_COOKIES_JSON_1` | 是 | 第 1 个 Coze 账号登录 Cookie 的 JSON 数组 | 用浏览器登录 `https://www.coze.cn`，再用 Cookie 导出插件导出 `coze.cn`、`volcengine.com`、`volccloudidentity.com` 相关 Cookie。把导出的 JSON 数组完整粘贴进去。 |
+| `COZE_COOKIES_JSON_2` | 是 | 第 2 个 Coze 账号登录 Cookie 的 JSON 数组 | 换另一个账号登录后，按同样方式导出并粘贴。 |
 
 常用 Cookie 导出插件：
 
@@ -24,11 +25,20 @@
 - 不想装插件时，可以参考 [Chrome DevTools 官方文档](https://developer.chrome.com/docs/devtools/application/cookies) 用 Chrome DevTools（Chrome 开发者工具）查看 Cookie，但手动复制会更麻烦。
 - 导出时尽量只导出 Coze 相关域名，避免把无关网站 Cookie 放进去。
 
-`COZE_STORAGE_STATE_JSON`（Playwright 登录状态）也兼容，但不推荐新手使用。它通常更大，容易超过 GitHub Secret（GitHub 加密变量）的长度限制；新手直接用 `COZE_COOKIES_JSON` 更稳。
+也可以用 GitHub Variables（普通变量）`COZE_ACCOUNT_NAMES` 自定义账号显示名，逗号分隔，例如 `主号,小号`；不填时依次显示为「账号1」「账号2」。
 
-### 第 3 步：按需添加失败通知 Secret（加密变量）
+### 第 3 步：添加飞书通知 Secret（加密变量）
 
-这一步可选。不需要失败通知的话可以跳过；想推送到微信，推荐只填 `PUSHPLUS_TOKEN`。
+每天 09:00 的签到汇总通过飞书群自定义机器人发送，必须配置：
+
+| 名称 | 必填 | 填什么 |
+| --- | --- | --- |
+| `FEISHU_WEBHOOK_URL` | 是 | 飞书群「设置」->「群机器人」->「添加机器人」->「自定义机器人」生成的 Webhook 地址 |
+| `FEISHU_WEBHOOK_SECRET` | 否 | 自定义机器人开启「签名校验」时填写的密钥；未开启签名校验则不填 |
+
+### 第 3.1 步：按需添加失败通知 Secret（加密变量）
+
+这一步可选。签到脚本运行失败时会即时推送（不依赖 09:00 汇总）；想推送到微信，推荐只填 `PUSHPLUS_TOKEN`。
 
 | 名称 | 用途 | 填什么 | 获取方式 |
 | --- | --- | --- | --- |
@@ -38,60 +48,51 @@
 
 ### 第 4 步：按需开启 Cookie 自动刷新
 
-这一步可选。不填 `GH_PAT` 时，脚本仍然可以正常运行；只是 Cookie 过期后需要你手动更新 `COZE_COOKIES_JSON`。
+这一步可选。不填 `GH_PAT` 时，脚本仍然可以正常运行；只是 Cookie 过期后需要你手动更新 `COZE_COOKIES_JSON_1` / `COZE_COOKIES_JSON_2`。
 
 | 名称 | 用途 | 填什么 | 获取方式 |
 | --- | --- | --- | --- |
-| `GH_PAT` | 自动更新 `COZE_COOKIES_JSON` | GitHub fine-grained personal access token（细粒度个人访问令牌） | 在 GitHub 个人设置里创建 fine-grained token（细粒度令牌），只授权当前仓库，并给 `Actions secrets`（Actions 密钥）读写权限。GitHub 官方说明见 [Managing your personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)。 |
+| `GH_PAT` | 自动更新两个账号的 Cookie Secret | GitHub fine-grained personal access token（细粒度个人访问令牌） | 在 GitHub 个人设置里创建 fine-grained token（细粒度令牌），只授权当前仓库，并给 `Actions secrets`（Actions 密钥）读写权限。GitHub 官方说明见 [Managing your personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)。 |
 
 ### 第 5 步：手动运行一次
 
 进入自己的仓库：
 
 1. 打开 `Actions`（自动化）。
-2. 选择 `Coze daily credit`。
+2. 选择 `Coze daily check-in`。
 3. 点击 `Run workflow`（手动运行）。
 4. 等待运行结束，绿色对勾表示成功。
 
 如果失败，打开本次运行记录，查看日志和 `coze-failure` artifact（失败产物）。里面通常会有失败截图和页面 HTML，方便判断是不是 Cookie 过期或页面变化。
 
-失败通知有两层：签到脚本能运行起来时，会发送带具体失败原因的通知；如果失败发生在依赖安装、浏览器安装、脚本启动之前，workflow（工作流）会发送一条兜底通知。脚本已经成功发过通知时，兜底通知会自动跳过，避免重复推送。
+签到脚本能运行起来但某个账号失败时，会立即通过 pushplus / Bark 发送带具体失败原因的通知（需配置对应 Secret）；没有配置时，结果仍会在 09:00 的飞书汇总里体现。
 
 ### 第 6 步：等待每天自动运行
 
-测试成功后不用再操作。默认会在北京时间每天 05:30 左右自动运行。
-
-## 可选高级配置
-
-这些配置不是开箱即用必需项，不确定就不要填。
-
-| 名称 | 用途 | 默认值 | 建议 |
-| --- | --- | --- | --- |
-| `UPLOAD_UPDATED_STORAGE_STATE` | 成功运行后，把更新后的 Playwright storage state（登录状态文件）上传到本次 Actions（自动化）运行的 artifact（构建产物）里 | 不上传 | 默认不填。只有你想下载完整登录状态用于排查问题时，才临时设为 `true`。这个文件包含 Cookie，用完后建议马上改回空值或删除这个变量。 |
-
-`UPLOAD_UPDATED_STORAGE_STATE` 的作用：脚本每次成功运行后，浏览器里的 Cookie 可能会被 Coze 刷新。开启这个变量后，GitHub 会把刷新后的完整登录状态文件上传到运行记录里，方便你手动下载查看或迁移。但它包含登录 Cookie，别人拿到后可能直接登录你的 Coze，所以不适合作为默认开启配置。
-
-添加 GitHub Variables（GitHub 普通变量）的位置同样在 `Settings`（设置）-> `Secrets and variables`（密钥和变量）-> `Actions`（自动化），切换到 `Variables`（普通变量）标签页。GitHub 官方说明见 [Store information in variables](https://docs.github.com/actions/learn-github-actions/variables)（在变量中保存信息）。
+测试成功后不用再操作。每天北京时间 00:05 自动签到两个账号，09:00 通过飞书发送签到结果汇总。
 
 ## 定时运行
 
-默认配置在 `.github/workflows/coze-daily.yml`：
+默认配置：
 
-```yaml
-schedule:
-  - cron: "30 21 * * *"
-```
+- `.github/workflows/coze-checkin.yml`：每天 00:05 签到，`cron: "5 16 * * *"`
+- `.github/workflows/coze-summary.yml`：每天 09:00 发送飞书汇总，`cron: "0 1 * * *"`
 
-GitHub Actions（GitHub 自动化）的 cron（定时表达式）使用 UTC（协调世界时）。`30 21 * * *` 对应北京时间每天 05:30 左右。GitHub 可能会有几分钟延迟，这是正常现象。
+GitHub Actions（GitHub 自动化）的 cron（定时表达式）使用 UTC（协调世界时）。`5 16 * * *` 对应北京时间次日 00:05，`0 1 * * *` 对应北京时间 09:00。GitHub 可能会有几分钟延迟，这是正常现象。
 
-如果要改时间，直接改这行 cron（定时表达式）即可：
+签到结果会写入仓库的 `coze-status` 分支（`status/latest.json`），09:00 的汇总任务从这里读取。不要删除该分支。
+
+如果要改时间，直接改对应工作流里的 cron（定时表达式）：
 
 | 北京时间 | cron（定时表达式） |
 | --- | --- |
-| 每天 05:30 | `30 21 * * *` |
+| 每天 00:05 | `5 16 * * *` |
+| 每天 09:00 | `0 1 * * *` |
 | 每天 08:00 | `0 0 * * *` |
 | 每天 12:00 | `0 4 * * *` |
 | 每天 23:00 | `0 15 * * *` |
+
+> 定时工作流只会在仓库默认分支（通常是 `main`）上生效，修改后请合并到 `main`。
 
 ## 本地调试
 
@@ -100,7 +101,8 @@ GitHub Actions（GitHub 自动化）的 cron（定时表达式）使用 UTC（�
 ```powershell
 npm install
 npx playwright install chromium
-$env:COZE_COOKIES_JSON = Get-Content .\cookies.json -Raw
+$env:COZE_COOKIES_JSON_1 = Get-Content .\cookies-1.json -Raw
+$env:COZE_COOKIES_JSON_2 = Get-Content .\cookies-2.json -Raw
 $env:PUSHPLUS_TOKEN = "你的pushplus token"
 npm start
 ```
@@ -110,8 +112,8 @@ npm start
 ## 安全提醒
 
 - 不要把 Cookie、token（令牌）、Bark 地址写进代码或提交到仓库。
-- `COZE_COOKIES_JSON`、`PUSHPLUS_TOKEN`、`BARK_PUSH_URL`、`GH_PAT` 都应该放在 GitHub Secrets（GitHub 加密变量）里。
-- 如果怀疑 Cookie 泄露，退出 Coze 登录并重新登录，再更新 `COZE_COOKIES_JSON`。
+- `COZE_COOKIES_JSON_1`、`COZE_COOKIES_JSON_2`、`FEISHU_WEBHOOK_URL`、`PUSHPLUS_TOKEN`、`BARK_PUSH_URL`、`GH_PAT` 都应该放在 GitHub Secrets（GitHub 加密变量）里。
+- 如果怀疑 Cookie 泄露，退出 Coze 登录并重新登录，再更新对应的 `COZE_COOKIES_JSON_1` / `COZE_COOKIES_JSON_2`。
 
 ---
 

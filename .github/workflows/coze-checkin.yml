@@ -1,0 +1,83 @@
+name: Coze daily check-in
+
+on:
+  schedule:
+    # 00:05 Asia/Shanghai (UTC+8)
+    - cron: "5 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: coze-checkin
+  cancel-in-progress: false
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Coze daily check-in
+        env:
+          COZE_COOKIES_JSON_1: ${{ secrets.COZE_COOKIES_JSON_1 }}
+          COZE_COOKIES_JSON_2: ${{ secrets.COZE_COOKIES_JSON_2 }}
+          COZE_ACCOUNT_NAMES: ${{ vars.COZE_ACCOUNT_NAMES }}
+          BARK_PUSH_URL: ${{ secrets.BARK_PUSH_URL }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          PUSHPLUS_TOPIC: ${{ secrets.PUSHPLUS_TOPIC }}
+          PLAYWRIGHT_TIMEOUT_MS: "30000"
+          POST_LOAD_WAIT_MS: "5000"
+        run: npm start
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coze-failure
+          path: artifacts/
+          if-no-files-found: ignore
+
+      - name: Publish check-in status
+        if: always()
+        run: |
+          set -e
+          if [ ! -f artifacts/result.json ]; then
+            echo "No result file found; skip publishing status."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan coze-status-tmp
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p status
+          cp artifacts/result.json status/latest.json
+          git add -f status/latest.json
+          git commit -m "chore: coze status $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push --force origin HEAD:coze-status
+
+      - name: Update Coze cookie secrets
+        if: success()
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          COZE_REFRESH_TARGETS: >-
+            [{"secret":"COZE_COOKIES_JSON_1","path":"artifacts/storage_state.account1.updated.json"},{"secret":"COZE_COOKIES_JSON_2","path":"artifacts/storage_state.account2.updated.json"}]
+        run: npm run update-secret
